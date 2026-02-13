@@ -163,199 +163,204 @@ def write_email_html(run: RunOverview,
                      summary_html_url: Optional[str] = None,
                      title: str = "Margin Anomaly Report") -> str:
     """
-    Generate a clean, business-focused email body.
-
-    Shows:
-      - KPIs: unique flagged count, overall rate
-      - Summary by center (accounts, flagged, rate)
-      - Top 3 accounts per center with reason (column name only)
-      - Link to full report
-
-    Does NOT show:
-      - Model names (aiv7, aiv8, etc.)
-      - Anomaly scores
-      - SHAP numeric contributions
-      - Per-mode breakdowns
-
-    Parameters
-    ----------
-    run : RunOverview
-    summary_html_path : str, optional
-        Local path to summary.html for file:// link.
-    summary_html_url : str, optional
-        Network URL to summary.html (preferred over path).
-    title : str
-        Email heading.
-
-    Returns
-    -------
-    str : email HTML string
+    Generate a clean, Outlook-compatible, business-focused email body.
+    Uses table-based layout with bgcolor attributes for maximum
+    Outlook/Exchange compatibility. Barclays blue (#00395D) styling.
+    ASCII-only output (safe for WCF SOAP services).
     """
     unique_cobs = sorted(set((run.cob_dates_by_center or {}).values()))
     cob_text = unique_cobs[0] if len(unique_cobs) == 1 else ", ".join(unique_cobs)
 
-    # Link to full report
     report_link = None
     if summary_html_url:
         report_link = summary_html_url
     elif summary_html_path:
         report_link = _convert_to_file_url(summary_html_path)
 
-    # Compute totals
     total_accounts = sum(int(cs.total or 0) for cs in run.by_center.values())
     total_flagged = int(run.total_flagged or 0)
     overall_rate = (total_flagged / total_accounts * 100.0) if total_accounts > 0 else 0.0
     num_centers = len(run.by_center)
+    plural = "s" if num_centers != 1 else ""
 
-    # ---- Center summary rows ----------------------------------------------
+    # Inline font style shorthand
+    F = "font-family:Segoe UI,Arial,sans-serif"
+
+    # ---- Center table rows ------------------------------------------------
     center_rows = ""
-    for c in sorted(run.by_center.keys()):
+    alt = False
+    centers_sorted = sorted(run.by_center.keys())
+    for i, c in enumerate(centers_sorted):
         cs = run.by_center[c]
         total = int(cs.total or 0)
         flagged = int(cs.flagged or 0)
         rate = (flagged / total * 100.0) if total > 0 else 0.0
+        bg = ' bgcolor="#f9fafb" style="background-color:#f9fafb;' if (i % 2 == 1) else ' style="'
+        last = "" if i < len(centers_sorted) - 1 else ""
+        bb = "border-bottom:1px solid #e5e7eb;" if i < len(centers_sorted) - 1 else ""
 
         center_rows += (
-            '<tr>'
-            f'<td style="padding:10px 12px; border-bottom:1px solid #f0f0f0; font-weight:600">{escape(cs.center)}</td>'
-            f'<td style="padding:10px 12px; border-bottom:1px solid #f0f0f0; text-align:center">{total:,}</td>'
-            f'<td style="padding:10px 12px; border-bottom:1px solid #f0f0f0; text-align:center; color:#dc2626; font-weight:700">{flagged}</td>'
-            f'<td style="padding:10px 12px; border-bottom:1px solid #f0f0f0; text-align:center">{rate:.1f}%</td>'
-            '</tr>'
+            f'<tr>'
+            f'<td{bg} padding:10px 14px; {bb} {F}; font-size:13px; font-weight:600; color:#1a1a2e;">{escape(cs.center)}</td>'
+            f'<td{bg} padding:10px 14px; {bb} {F}; font-size:13px; color:#374151; text-align:center;">{total:,}</td>'
+            f'<td{bg} padding:10px 14px; {bb} {F}; font-size:13px; color:#dc2626; font-weight:700; text-align:center;">{flagged}</td>'
+            f'<td{bg} padding:10px 14px; {bb} {F}; font-size:13px; color:#374151; text-align:center;">{rate:.1f}%</td>'
+            f'</tr>'
         )
 
-    # ---- Top 3 per center sections ----------------------------------------
-    top3_sections = ""
-    for c in sorted(run.by_center.keys()):
+    # ---- Top 3 per center -------------------------------------------------
+    top3_html = ""
+    for c in centers_sorted:
         cs = run.by_center[c]
+
+        # Section header with cyan underline
+        top3_html += (
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">'
+            f'<tr><td style="{F}; font-size:14px; font-weight:bold; color:#00395D; padding-bottom:8px; border-bottom:3px solid #00AEEF;">'
+            f'{escape(c)} - Top 3 Flagged Accounts'
+            f'</td></tr></table>'
+        )
+
         if not cs.top_accounts:
-            top3_sections += (
-                '<div style="margin-bottom:20px">'
-                f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} - Top Flagged Accounts</div>'
-                '<div style="font-size:12px; color:#9ca3af; padding:8px 0">No anomalies detected.</div>'
-                '</div>'
+            top3_html += (
+                f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">'
+                f'<tr><td style="{F}; font-size:12px; color:#9ca3af; padding:8px 0;">No anomalies detected.</td></tr>'
+                f'</table>'
             )
             continue
 
-        acct_rows = ""
+        top3_html += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">'
+
         for idx, acc in enumerate(cs.top_accounts, start=1):
             reason = _extract_reason_columns(getattr(acc, "shap_reason", None))
-            reason_html = ""
+            reason_cell = ""
             if reason:
-                reason_html = (
-                    f'<div style="font-size:12px; color:#92400e; margin-top:2px; '
-                    f'padding:3px 8px; background:#fffbeb; border-radius:4px; '
-                    f'display:inline-block">{escape(reason)}</div>'
+                reason_cell = (
+                    f'<tr><td style="padding-top:4px;">'
+                    f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                    f'<td bgcolor="#FFF3E0" style="background-color:#FFF3E0; padding:3px 10px; {F}; font-size:11px; color:#b45309; border:1px solid #f59e0b;">{escape(reason)}</td>'
+                    f'</tr></table>'
+                    f'</td></tr>'
                 )
 
-            acct_rows += (
-                '<tr>'
-                f'<td style="padding:8px 12px; border-bottom:1px solid #f0f0f0; width:28px; vertical-align:top">'
-                f'<div style="width:22px; height:22px; border-radius:50%; background:#2563eb; color:#fff; text-align:center; line-height:22px; font-size:11px; font-weight:700">{idx}</div>'
-                '</td>'
-                f'<td style="padding:8px 12px; border-bottom:1px solid #f0f0f0">'
-                f'<div style="font-weight:600; font-size:13px">{escape(str(acc.account))}</div>'
-                f'{reason_html}'
-                '</td>'
-                '</tr>'
+            top3_html += (
+                f'<tr>'
+                # Rank badge
+                f'<td width="32" valign="top" style="padding:8px 12px 8px 0;">'
+                f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                f'<td bgcolor="#00395D" width="24" height="24" style="background-color:#00395D; color:#ffffff; {F}; font-size:11px; font-weight:bold; text-align:center; line-height:24px;">{idx}</td>'
+                f'</tr></table>'
+                f'</td>'
+                # Account + reason
+                f'<td valign="top" style="padding:8px 0; border-bottom:1px solid #e5e7eb;">'
+                f'<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+                f'<tr><td style="{F}; font-size:14px; font-weight:bold; color:#1a1a2e;">{escape(str(acc.account))}</td></tr>'
+                f'{reason_cell}'
+                f'</table>'
+                f'</td>'
+                f'</tr>'
             )
 
-        top3_sections += (
-            '<div style="margin-bottom:20px">'
-            f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} - Top 3 Flagged Accounts</div>'
-            f'<table style="width:100%; border-collapse:collapse">{acct_rows}</table>'
-            '</div>'
-        )
+        top3_html += '</table>'
 
     # ---- CTA button -------------------------------------------------------
     cta_html = ""
     if report_link:
         cta_html = (
-            '<div style="text-align:center; margin:24px 0 8px 0">'
-            f'<a href="{escape(report_link)}" target="_blank" '
-            'style="display:inline-block; padding:12px 36px; background:#2563eb; color:#ffffff; '
-            'text-decoration:none; border-radius:8px; font-size:14px; font-weight:600; '
-            'letter-spacing:0.3px">'
-            'View Full Report and Charts >'
-            '</a>'
-            '<div style="font-size:11px; color:#9ca3af; margin-top:8px">Includes account overview images and detailed breakdowns</div>'
-            '</div>'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding:24px 0 8px 0;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0">'
+            '<tr>'
+            f'<td bgcolor="#00395D" style="background-color:#00395D; padding:14px 40px;">'
+            f'<a href="{escape(report_link)}" target="_blank" style="{F}; font-size:14px; font-weight:bold; color:#ffffff; text-decoration:none; display:inline-block;">View Full Report and Charts &gt;</a>'
+            '</td>'
+            '</tr></table>'
+            '</td></tr>'
+            f'<tr><td align="center" style="padding-top:8px; {F}; font-size:11px; color:#9ca3af;">'
+            'Includes account overview images and detailed breakdowns'
+            '</td></tr>'
+            '</table>'
         )
 
-    # ---- Assemble email ---------------------------------------------------
-    plural = "s" if num_centers != 1 else ""
+    # ---- Assemble ---------------------------------------------------------
+    email = (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<!--[if !mso]><!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!--<![endif]-->'
+        '</head>'
+        f'<body style="margin:0; padding:0; background-color:#f4f4f4; {F};">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">'
+        '<tr><td align="center" style="padding:24px 8px;">'
+        '<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border:1px solid #d0d5dd;">'
 
-    email_html = (
-        '<!doctype html>'
-        '<html>'
-        '<head><meta charset="utf-8"></head>'
-        '<body style="margin:0; padding:0; background:#f3f4f6; font-family:\'Segoe UI\',-apple-system,BlinkMacSystemFont,sans-serif">'
-        ''
-        '<div style="max-width:640px; margin:24px auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.06)">'
-        ''
-        '    <!-- Header -->'
-        f'    <div style="background:#1e3a5f; padding:24px 28px; color:#ffffff">'
-        f'        <h1 style="margin:0; font-size:20px; font-weight:700; letter-spacing:-0.3px">{escape(title)}</h1>'
-        f'        <div style="margin-top:6px; font-size:13px; opacity:0.8">'
-        f'            COB: {escape(cob_text)}  |  Run: {escape(run.run_id)}'
-        '        </div>'
-        '    </div>'
-        ''
-        '    <!-- Body -->'
-        '    <div style="padding:24px 28px">'
-        ''
-        '        <!-- KPI cards -->'
-        '        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px">'
-        '            <tr>'
-        '                <td width="50%" style="padding:0 6px 0 0">'
-        '                    <div style="text-align:center; padding:18px 12px; background:#fef2f2; border-radius:8px; border:1px solid #fecaca">'
-        '                        <div style="font-size:11px; color:#991b1b; text-transform:uppercase; letter-spacing:0.5px; font-weight:600">Accounts Flagged</div>'
-        f'                        <div style="font-size:32px; font-weight:800; color:#dc2626; margin-top:4px">{total_flagged}</div>'
-        f'                        <div style="font-size:12px; color:#991b1b; margin-top:2px">out of {total_accounts:,}</div>'
-        '                    </div>'
-        '                </td>'
-        '                <td width="50%" style="padding:0 0 0 6px">'
-        '                    <div style="text-align:center; padding:18px 12px; background:#f0fdf4; border-radius:8px; border:1px solid #bbf7d0">'
-        '                        <div style="font-size:11px; color:#065f46; text-transform:uppercase; letter-spacing:0.5px; font-weight:600">Overall Flag Rate</div>'
-        f'                        <div style="font-size:32px; font-weight:800; color:#059669; margin-top:4px">{overall_rate:.1f}%</div>'
-        f'                        <div style="font-size:12px; color:#065f46; margin-top:2px">across {num_centers} center{plural}</div>'
-        '                    </div>'
-        '                </td>'
-        '            </tr>'
-        '        </table>'
-        ''
-        '        <!-- Center summary table -->'
-        '        <div style="font-size:13px; font-weight:600; color:#1a1a2e; margin-bottom:8px">Summary by Center</div>'
-        '        <table style="width:100%; border-collapse:collapse; margin-bottom:24px">'
-        '            <thead>'
-        '                <tr>'
-        '                    <th style="padding:10px 12px; text-align:left; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.3px; border-bottom:2px solid #e5e7eb; background:#f9fafb">Center</th>'
-        '                    <th style="padding:10px 12px; text-align:center; font-size:11px; color:#6b7280; text-transform:uppercase; border-bottom:2px solid #e5e7eb; background:#f9fafb">Accounts</th>'
-        '                    <th style="padding:10px 12px; text-align:center; font-size:11px; color:#6b7280; text-transform:uppercase; border-bottom:2px solid #e5e7eb; background:#f9fafb">Flagged</th>'
-        '                    <th style="padding:10px 12px; text-align:center; font-size:11px; color:#6b7280; text-transform:uppercase; border-bottom:2px solid #e5e7eb; background:#f9fafb">Rate</th>'
-        '                </tr>'
-        '            </thead>'
-        f'            <tbody>{center_rows}</tbody>'
-        '        </table>'
-        ''
-        f'        {top3_sections}'
-        ''
-        f'        {cta_html}'
-        ''
-        '    </div>'
-        ''
-        '    <!-- Footer -->'
-        '    <div style="padding:14px 28px; background:#f9fafb; border-top:1px solid #e5e7eb; text-align:center; font-size:11px; color:#9ca3af">'
-        '        Margin Anomaly Detection  |  This is an automated daily notification'
-        '    </div>'
-        ''
-        '</div>'
-        ''
-        '</body>'
-        '</html>'
+        # Header
+        '<tr><td bgcolor="#00395D" style="background-color:#00395D; padding:28px 32px;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td style="{F}; font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:-0.3px;">{escape(title)}</td></tr>'
+        f'<tr><td style="{F}; font-size:13px; color:#a3c4e0; padding-top:6px;">COB: {escape(cob_text)}  |  Run: {escape(run.run_id)}</td></tr>'
+        '</table></td></tr>'
+
+        # Cyan accent line
+        '<tr><td bgcolor="#00AEEF" style="background-color:#00AEEF; height:4px; font-size:0; line-height:0;"> </td></tr>'
+
+        # Body
+        '<tr><td style="padding:28px 32px;">'
+
+        # KPI cards
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;"><tr>'
+        '<td width="48%" valign="top">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid #dc2626;">'
+        '<tr><td bgcolor="#fef2f2" style="background-color:#fef2f2; padding:20px 16px; text-align:center;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td style="{F}; font-size:11px; color:#991b1b; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">ACCOUNTS FLAGGED</td></tr>'
+        f'<tr><td style="{F}; font-size:36px; font-weight:800; color:#dc2626; text-align:center; padding-top:6px;">{total_flagged}</td></tr>'
+        f'<tr><td style="{F}; font-size:12px; color:#991b1b; text-align:center; padding-top:2px;">out of {total_accounts:,}</td></tr>'
+        '</table></td></tr></table></td>'
+        '<td width="4%"> </td>'
+        '<td width="48%" valign="top">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid #059669;">'
+        '<tr><td bgcolor="#f0fdf4" style="background-color:#f0fdf4; padding:20px 16px; text-align:center;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td style="{F}; font-size:11px; color:#065f46; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">OVERALL FLAG RATE</td></tr>'
+        f'<tr><td style="{F}; font-size:36px; font-weight:800; color:#059669; text-align:center; padding-top:6px;">{overall_rate:.1f}%</td></tr>'
+        f'<tr><td style="{F}; font-size:12px; color:#065f46; text-align:center; padding-top:2px;">across {num_centers} center{plural}</td></tr>'
+        '</table></td></tr></table></td>'
+        '</tr></table>'
+
+        # Summary by Center label
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;">'
+        f'<tr><td style="{F}; font-size:14px; font-weight:bold; color:#00395D; padding-bottom:10px;">Summary by Center</td></tr></table>'
+
+        # Center table
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #d0d5dd; margin-bottom:28px;">'
+        '<tr>'
+        f'<td bgcolor="#00395D" style="background-color:#00395D; padding:10px 14px; {F}; font-size:11px; color:#ffffff; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #00AEEF;">CENTER</td>'
+        f'<td bgcolor="#00395D" style="background-color:#00395D; padding:10px 14px; {F}; font-size:11px; color:#ffffff; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; text-align:center; border-bottom:2px solid #00AEEF;">ACCOUNTS</td>'
+        f'<td bgcolor="#00395D" style="background-color:#00395D; padding:10px 14px; {F}; font-size:11px; color:#ffffff; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; text-align:center; border-bottom:2px solid #00AEEF;">FLAGGED</td>'
+        f'<td bgcolor="#00395D" style="background-color:#00395D; padding:10px 14px; {F}; font-size:11px; color:#ffffff; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px; text-align:center; border-bottom:2px solid #00AEEF;">RATE</td>'
+        '</tr>'
+        f'{center_rows}'
+        '</table>'
+
+        # Top 3 sections
+        f'{top3_html}'
+
+        # CTA
+        f'{cta_html}'
+
+        '</td></tr>'  # end body
+
+        # Footer
+        '<tr><td bgcolor="#f0f2f5" style="background-color:#f0f2f5; padding:16px 32px; border-top:1px solid #d0d5dd;">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td align="center" style="{F}; font-size:11px; color:#6b7280;">Margin Anomaly Detection  |  This is an automated daily notification</td></tr>'
+        '</table></td></tr>'
+
+        '</table>'  # main card
+        '</td></tr></table>'  # outer wrapper
+        '</body></html>'
     )
 
-    return email_html
+    return email
 
 
 # ===================================================================
