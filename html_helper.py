@@ -231,7 +231,7 @@ def write_email_html(run: RunOverview,
         if not cs.top_accounts:
             top3_sections += (
                 '<div style="margin-bottom:20px">'
-                f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} &#x2014; Top Flagged Accounts</div>'
+                f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} - Top Flagged Accounts</div>'
                 '<div style="font-size:12px; color:#9ca3af; padding:8px 0">No anomalies detected.</div>'
                 '</div>'
             )
@@ -262,7 +262,7 @@ def write_email_html(run: RunOverview,
 
         top3_sections += (
             '<div style="margin-bottom:20px">'
-            f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} &#x2014; Top 3 Flagged Accounts</div>'
+            f'<div style="font-size:13px; font-weight:600; color:#1e3a5f; margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2563eb">{escape(c)} - Top 3 Flagged Accounts</div>'
             f'<table style="width:100%; border-collapse:collapse">{acct_rows}</table>'
             '</div>'
         )
@@ -276,7 +276,7 @@ def write_email_html(run: RunOverview,
             'style="display:inline-block; padding:12px 36px; background:#2563eb; color:#ffffff; '
             'text-decoration:none; border-radius:8px; font-size:14px; font-weight:600; '
             'letter-spacing:0.3px">'
-            'View Full Report &amp; Charts &#x2192;'
+            'View Full Report and Charts >'
             '</a>'
             '<div style="font-size:11px; color:#9ca3af; margin-top:8px">Includes account overview images and detailed breakdowns</div>'
             '</div>'
@@ -297,7 +297,7 @@ def write_email_html(run: RunOverview,
         f'    <div style="background:#1e3a5f; padding:24px 28px; color:#ffffff">'
         f'        <h1 style="margin:0; font-size:20px; font-weight:700; letter-spacing:-0.3px">{escape(title)}</h1>'
         f'        <div style="margin-top:6px; font-size:13px; opacity:0.8">'
-        f'            COB: {escape(cob_text)} &nbsp;&#x2502;&nbsp; Run: {escape(run.run_id)}'
+        f'            COB: {escape(cob_text)}  |  Run: {escape(run.run_id)}'
         '        </div>'
         '    </div>'
         ''
@@ -346,7 +346,7 @@ def write_email_html(run: RunOverview,
         ''
         '    <!-- Footer -->'
         '    <div style="padding:14px 28px; background:#f9fafb; border-top:1px solid #e5e7eb; text-align:center; font-size:11px; color:#9ca3af">'
-        '        Margin Anomaly Detection &nbsp;&#x2502;&nbsp; This is an automated daily notification'
+        '        Margin Anomaly Detection  |  This is an automated daily notification'
         '    </div>'
         ''
         '</div>'
